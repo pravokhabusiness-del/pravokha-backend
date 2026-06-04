@@ -32,7 +32,6 @@
         "multer": "^2.0.2",
         "nodemailer": "^7.0.13",
         "razorpay": "^2.9.6",
-        "vite_react_shadcn_ts": "file:../pravokha-updated",
         "zod": "^3.22.4"
     },
     "devDependencies": {
