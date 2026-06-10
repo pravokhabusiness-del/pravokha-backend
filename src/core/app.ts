@@ -47,7 +47,23 @@ app.use(helmet({
 // In development/test allow any origin to simplify local frontend integration
 if (config.nodeEnv === 'production') {
     app.use(cors({
-        origin: config.frontendUrl,
+        origin: (origin, callback) => {
+            // Allow requests with no origin (like mobile apps or curl)
+            if (!origin) return callback(null, true);
+
+            const isAllowed =
+                origin === config.frontendUrl ||
+                origin === 'https://jocular-kelpie-cc3630.netlify.app' ||
+                /--jocular-kelpie-cc3630\.netlify\.app$/.test(origin) ||
+                origin.startsWith('http://localhost:') ||
+                origin.startsWith('http://127.0.0.1:');
+
+            if (isAllowed) {
+                callback(null, true);
+            } else {
+                callback(null, false);
+            }
+        },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization'],
