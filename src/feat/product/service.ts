@@ -86,7 +86,10 @@ export class ProductService {
             console.log('[ProductService.mapProductData] First variant structure:', JSON.stringify(data.variants[0], null, 2));
 
             // INTEGRITY CHECK: Ensure at least one variant has sizes (Amazon/Shopify pattern)
-            const hasSizes = data.variants.some((v: any) => v.sizes && Array.isArray(v.sizes) && v.sizes.length > 0);
+            const hasSizes = data.variants.some((v: any) => {
+                const sizesArr = v.sizes || v.product_sizes;
+                return sizesArr && Array.isArray(sizesArr) && sizesArr.length > 0;
+            });
 
             if (!hasSizes) {
                 console.error('[ProductService] ❌ CRITICAL DATA INTEGRITY ERROR: No sizes found in any variant!');
