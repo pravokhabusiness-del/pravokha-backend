@@ -240,7 +240,7 @@ export class PaymentController {
             settings: {
                 taxRate: settings?.taxRate || 18,
                 shippingFee: settings?.defaultShippingFee || 99,
-                freeShippingThreshold: (settings as any)?.freeShippingThreshold || 1999,
+                freeShippingThreshold: (settings as any)?.freeShippingThreshold || 1000,
                 storeName: settings?.storeName || 'Pravokha'
             }
         });

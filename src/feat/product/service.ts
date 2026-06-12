@@ -137,6 +137,18 @@ export class ProductService {
     static async createProduct(userId: string, data: any) {
         const mappedData = this.mapProductData(data);
 
+        if (mappedData.categoryId && mappedData.status === 'ACTIVE') {
+            const category = await prisma.category.findUnique({
+                where: { id: mappedData.categoryId }
+            });
+            if (!category) {
+                throw { statusCode: 400, message: "Category not found" };
+            }
+            if (!category.parentId) {
+                throw { statusCode: 400, message: "Products can only be published to subcategories, not top-level categories." };
+            }
+        }
+
         // Fetch Vendor record for this user
         let vendor = await prisma.vendor.findUnique({
             where: { ownerId: userId }
@@ -521,7 +533,7 @@ export class ProductService {
     static async updateProduct(id: string, user: { id: string; role: Role }, data: any) {
         const product = await prisma.product.findUnique({
             where: { id },
-            select: { id: true, vendorId: true, status: true, deletedAt: true }
+            select: { id: true, vendorId: true, status: true, deletedAt: true, categoryId: true }
         });
 
         if (!product || product.deletedAt) {
@@ -545,6 +557,20 @@ export class ProductService {
             // Auto-convert to DRAFT for unverified sellers
             console.log(`[ProductService] Vendor ${vendor?.id || 'unknown'} is not ACTIVE (status: ${vendor?.status || 'missing'}). Forcing product update to DRAFT.`);
             mappedData.status = 'DRAFT';
+        }
+
+        const categoryIdToCheck = mappedData.categoryId || product.categoryId;
+        const statusToCheck = mappedData.status || product.status;
+        if (categoryIdToCheck && statusToCheck === 'ACTIVE') {
+            const category = await prisma.category.findUnique({
+                where: { id: categoryIdToCheck }
+            });
+            if (!category) {
+                throw { statusCode: 400, message: "Category not found" };
+            }
+            if (!category.parentId) {
+                throw { statusCode: 400, message: "Products can only be published to subcategories, not top-level categories." };
+            }
         }
 
         const realProductId = product.id; // Resolve UUID from the found product
