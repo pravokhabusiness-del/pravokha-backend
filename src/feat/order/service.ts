@@ -290,7 +290,13 @@ export class OrderService {
                         slabCount: Math.ceil(shippingResult.breakdown[0].chargeableWeight / 0.5),
                         codFee: shippingResult.breakdown[0].codFee,
                         remoteSurcharge: shippingResult.breakdown[0].remoteSurcharge,
-                        shippingBreakdownJson: JSON.stringify(shippingResult.breakdown[0]),
+                        shippingBreakdownJson: JSON.stringify({
+  totalShippingFee: shippingResult.totalShippingFee,
+  zone: shippingResult.breakdown?.[0]?.zone,
+  weight: shippingResult.breakdown?.[0]?.chargeableWeight,
+  codFee: shippingResult.breakdown?.[0]?.codFee,
+  remoteSurcharge: shippingResult.breakdown?.[0]?.remoteSurcharge
+}),
                         platformShippingRevenue,
                         estimatedCourierCost,
                         shippingRateVersion: 'v1',
