@@ -340,7 +340,7 @@ model Order {
   slabCount            Int?                 @map("slab_count")
   codFee               Float?               @map("cod_fee")
   remoteSurcharge      Float?               @map("remote_surcharge")
-  shippingBreakdownJson String?             @map("shipping_breakdown_json")
+  shippingBreakdownJson Json?             @map("shipping_breakdown_json")
   platformShippingRevenue Float?            @map("platform_shipping_revenue")
   estimatedCourierCost   Float?             @map("estimated_courier_cost")
   shippingRateVersion    String?            @map("shipping_rate_version")
