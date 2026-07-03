@@ -9,12 +9,14 @@ export class RazorpayService {
      * Creates a Razorpay order for an existing system order
      */
     static async createRazorpayOrder(orderId: string, amount: number, currency: string = 'INR') {
+        
+        console.log("createRazorpayOrder called")
         const options = {
-            amount: Math.round(amount * 100), // Razorpay expects amount in paise
-            currency: currency,
-            receipt: `receipt_${orderId}`,
-            partial_payment: false,
-        };
+    amount: Math.round(amount * 100),
+    currency,
+    receipt: `rcpt_${orderId.slice(0, 20)}`,
+    partial_payment: false,
+};
 
         try {
             const razorpayOrder = await razorpayInstance.orders.create(options);

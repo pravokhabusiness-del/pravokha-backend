@@ -49,114 +49,179 @@ export class OrderService {
             const sanitizedItemsForDiscount: any[] = [];
 
             for (const item of items) {
-                const product = products.find(p => p.id === item.productId);
-                if (!product) throw new Error(`Product ${item.productId} not found`);
+    const product = products.find(p => p.id === item.productId);
+    if (!product) {
+        throw new Error(`Product ${item.productId} not found`);
+    }
 
-                // Security Audit Fix: Validate product status and blocked state
-                if (product.status !== 'PUBLISHED' && product.status !== 'ACTIVE') {
-                    throw new Error(`Product ${product.title} is currently not available for purchase (Status: ${product.status})`);
+    // Validate product
+    if (product.status !== "PUBLISHED" && product.status !== "ACTIVE") {
+        throw new Error(
+            `Product ${product.title} is currently not available for purchase (Status: ${product.status})`
+        );
+    }
+
+    if (product.isBlocked) {
+        throw new Error(`Product ${product.title} is currently blocked`);
+    }
+
+    // Global product stock check
+    if (product.stock < item.quantity) {
+        throw new Error(`Insufficient stock for ${product.title}`);
+    }
+
+    // ---------------- Variant & Size ----------------
+
+    if (item.variantId || item.color) {
+
+        const variant = await tx.productVariant.findFirst({
+            where: item.variantId
+                ? { id: item.variantId }
+                : {
+                      productId: item.productId,
+                      colorName: item.color,
+                  },
+        });
+
+        if (!variant) {
+            throw new Error(`Variant not found for ${product.title}`);
+        }
+
+        if (item.size) {
+
+            const sizeStock = await tx.productSize.findFirst({
+                where: {
+                    variantId: variant.id,
+                    size: item.size,
+                },
+            });
+
+            if (!sizeStock) {
+                throw new Error(
+                    `Size ${item.size} not found for ${product.title}`
+                );
+            }
+
+            const sizeResult = await tx.productSize.updateMany({
+                where: {
+                    id: sizeStock.id,
+                    stock: {
+                        gte: item.quantity,
+                    },
+                },
+                data: {
+                    stock: {
+                        decrement: item.quantity,
+                    },
+                },
+            });
+
+            if (sizeResult.count === 0) {
+                throw new Error(
+                    `Insufficient stock for size ${item.size} of ${product.title}`
+                );
+            }
+
+            const updatedSize = await tx.productSize.findUnique({
+                where: {
+                    id: sizeStock.id,
+                },
+            });
+
+            if (updatedSize?.stock === 0) {
+
+                const { NotificationService } = await import("../notification/service");
+
+                const vendorOwnerId =
+                    product.vendor?.ownerId || product.vendorId;
+
+                if (vendorOwnerId) {
+                    await NotificationService.createNotification(
+                        {
+                            userId: vendorOwnerId,
+                            title: "Size Out Of Stock ⚠️",
+                            message: `Variant "${variant.colorName || "Standard"}" - Size "${item.size}" of your product "${product.title}" is now out of stock.`,
+                            type: "alert",
+                            link: "/seller/products",
+                        },
+                        tx
+                    ).catch(console.error);
                 }
-                if (product.isBlocked) {
-                    throw new Error(`Product ${product.title} is currently blocked`);
-                }
 
-                if (product.stock < item.quantity) throw new Error(`Insufficient stock for ${product.title}`);
+                const admins = await tx.user.findMany({
+                    where: {
+                        role: {
+                            in: ["ADMIN", "SUPER_ADMIN"],
+                        },
+                    },
+                    select: {
+                        id: true,
+                    },
+                });
 
-                // --- VARIANT STOCK MANAGEMENT ---
-                if (item.variantId || item.color) {
-                    // 1. Find or Validate Variant
-                    const variant = await tx.productVariant.findFirst({
-                        where: item.variantId ? { id: item.variantId } : { productId: item.productId, colorName: item.color }
-                    });
-
-                    if (variant) {
-                        if (variant.stock < item.quantity) {
-                            throw new Error(`Insufficient stock for variant ${variant.colorName || variant.name} of ${product.title}`);
-                        }
-
-                        // Atomic variant stock decrement with safety check
-                        try {
-                            await tx.productVariant.update({
-                                where: { id: variant.id, stock: { gte: item.quantity } },
-                                data: { stock: { decrement: item.quantity } }
-                            });
-                        } catch (e) {
-                            throw new Error(`Concurrency mismatch: Insufficient stock for variant of ${product.title}`);
-                        }
-
-                        // 2. Handle Size Stock if applicable
-                        if (item.size) {
-                            const sizeStock = await tx.productSize.findFirst({
-                                where: { variantId: variant.id, size: item.size }
-                            });
-
-                            if (sizeStock) {
-                                if (sizeStock.stock < item.quantity) {
-                                    throw new Error(`Insufficient stock for size ${item.size} of ${product.title}`);
-                                }
-
-                                try {
-                                    const updatedSize = await tx.productSize.update({
-                                        where: { id: sizeStock.id, stock: { gte: item.quantity } },
-                                        data: { stock: { decrement: item.quantity } }
-                                    });
-
-                                    if (updatedSize.stock === 0) {
-                                        const { NotificationService } = await import('../notification/service');
-                                        
-                                        // 1. Notify the Seller (Vendor Owner)
-                                        const vendorOwnerId = product.vendor?.ownerId || product.vendorId;
-                                        if (vendorOwnerId) {
-                                            await NotificationService.createNotification({
-                                                userId: vendorOwnerId,
-                                                title: 'Size Out Of Stock ⚠️',
-                                                message: `Variant "${variant.colorName || 'Standard'}" - Size "${item.size}" of your product "${product.title}" is now out of stock.`,
-                                                type: 'alert',
-                                                link: `/seller/products`
-                                            }, tx).catch(e => console.error("Notification to seller failed:", e));
-                                        }
-
-                                        // 2. Notify Platform Admins / Super Admins
-                                        const admins = await tx.user.findMany({
-                                            where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
-                                            select: { id: true }
-                                        });
-                                        for (const admin of admins) {
-                                            await NotificationService.createNotification({
-                                                userId: admin.id,
-                                                title: 'Product Size Out Of Stock ⚠️',
-                                                message: `Product "${product.title}" (Color: "${variant.colorName || 'Standard'}", Size: "${item.size}") is now out of stock.`,
-                                                type: 'alert',
-                                                link: `/admin/products`
-                                            }, tx).catch(e => console.error("Notification to admin failed:", e));
-                                        }
-                                    }
-                                } catch (e) {
-                                    throw new Error(`Concurrency mismatch: Insufficient stock for size ${item.size} of ${product.title}`);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                sanitizedItemsForDiscount.push({ productId: item.productId, quantity: item.quantity, price: product.price });
-
-                const vId = product.vendorId;
-                if (!vId) throw new Error(`Product ${product.title} has no vendor assigned`);
-
-                if (!vendorGroups.has(vId)) vendorGroups.set(vId, []);
-                vendorGroups.get(vId)!.push({ item, product });
-
-                // Atomic global stock decrement with safety check
-                try {
-                    await tx.product.update({
-                        where: { id: item.productId, stock: { gte: item.quantity } },
-                        data: { stock: { decrement: item.quantity } },
-                    });
-                } catch (e) {
-                    throw new Error(`Concurrency mismatch: Insufficient global stock for ${product.title}`);
+                for (const admin of admins) {
+                    await NotificationService.createNotification(
+                        {
+                            userId: admin.id,
+                            title: "Product Size Out Of Stock ⚠️",
+                            message: `Product "${product.title}" (Color: "${variant.colorName || "Standard"}", Size: "${item.size}") is now out of stock.`,
+                            type: "alert",
+                            link: "/admin/products",
+                        },
+                        tx
+                    ).catch(console.error);
                 }
             }
+        }
+    }
+
+    // ---------------- Discount ----------------
+
+    sanitizedItemsForDiscount.push({
+        productId: item.productId,
+        quantity: item.quantity,
+        price: product.price,
+    });
+
+    // ---------------- Vendor ----------------
+
+    const vId = product.vendorId;
+
+    if (!vId) {
+        throw new Error(`Product ${product.title} has no vendor assigned`);
+    }
+
+    if (!vendorGroups.has(vId)) {
+        vendorGroups.set(vId, []);
+    }
+
+    vendorGroups.get(vId)!.push({
+        item,
+        product,
+    });
+
+    // ---------------- Product Stock ----------------
+
+    const productResult = await tx.product.updateMany({
+        where: {
+            id: item.productId,
+            stock: {
+                gte: item.quantity,
+            },
+        },
+        data: {
+            stock: {
+                decrement: item.quantity,
+            },
+        },
+    });
+
+    if (productResult.count === 0) {
+        throw new Error(
+            `Concurrency mismatch: Insufficient global stock for ${product.title}`
+        );
+    }
+}
 
             // 2. Calculate Combo Discounts
             const { ComboOfferService } = require('../combo-offer/service');
