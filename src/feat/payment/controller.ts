@@ -213,8 +213,13 @@ export class PaymentController {
         const { orderId } = req.params;
         const user = (req as any).user;
 
-        const order = await prisma.order.findUnique({
-            where: { id: orderId },
+        const order = await prisma.order.findFirst({
+            where: {
+                OR: [
+                    { id: orderId },
+                    { orderNumber: orderId }
+                ]
+            },
             include: { items: { include: { product: true } } }
         });
 

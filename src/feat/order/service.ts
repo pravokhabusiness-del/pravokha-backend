@@ -166,7 +166,7 @@ export class OrderService {
                             title: "Product Size Out Of Stock ⚠️",
                             message: `Product "${product.title}" (Color: "${variant.colorName || "Standard"}", Size: "${item.size}") is now out of stock.`,
                             type: "alert",
-                            link: "/admin/products",
+                            link: "/admin/products/manage",
                         },
                         tx
                     ).catch(console.error);
