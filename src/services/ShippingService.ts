@@ -14,6 +14,9 @@ export interface ShippingCalculationResult {
         codFee: number;
         remoteSurcharge: number;
         expressFee: number;
+        handlingFee?: number;
+        fuelSurcharge?: number;
+        tax?: number;
         total: number;
         minDays: number;
         maxDays: number;
@@ -114,14 +117,24 @@ export class ShippingService {
             let codFee = isCod ? zone.codFee : 0;
             let remoteSurcharge = isRemote ? zone.remoteSurcharge : 0;
 
-            let vendorTotal = baseFee + slabFee + codFee + remoteSurcharge;
+            let baseShippingTotal = baseFee + slabFee + codFee + remoteSurcharge;
 
             // Apply Express Multiplier
             let expressFee = 0;
             if (isExpress) {
-                expressFee = vendorTotal * (zone.expressMultiplier - 1);
-                vendorTotal *= zone.expressMultiplier;
+                expressFee = baseShippingTotal * (zone.expressMultiplier - 1);
+                baseShippingTotal *= zone.expressMultiplier;
             }
+
+            // Additional Fees (Handling, Fuel, Surcharges)
+            const handlingFee = 15; // Flat handling fee of ₹15
+            const fuelSurcharge = Math.round(baseShippingTotal * 0.10); // 10% Fuel Surcharge
+            const subtotalBeforeTax = baseShippingTotal + handlingFee + fuelSurcharge;
+            
+            // Tax: 18% GST on shipping (estimated for display)
+            const shippingTax = Math.round(subtotalBeforeTax * 0.18);
+            
+            const vendorTotal = subtotalBeforeTax; // Stored exclusive of GST so it gets taxed composite with products in checkout/order creation
 
             // Estimate Delivery Days
             let minDays = zone.minDays;
@@ -147,6 +160,9 @@ export class ShippingService {
                 codFee,
                 remoteSurcharge,
                 expressFee: Number(expressFee.toFixed(2)),
+                handlingFee,
+                fuelSurcharge,
+                tax: shippingTax,
                 total: Number(vendorTotal.toFixed(2)),
                 minDays,
                 maxDays,
