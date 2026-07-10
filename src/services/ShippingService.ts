@@ -96,7 +96,7 @@ export class ShippingService {
             itemsList.forEach((item: { productId: string; quantity: number; sellerId: string }) => {
                 const product = products.find((p: any) => p.id === item.productId);
                 if (product) {
-                    totalActualWeight += (product.weight || 0.5) * item.quantity;
+                    totalActualWeight += ((product.weight || 0.5) + 0.05) * item.quantity;
                     const volWeight = ((product.length || 20) * (product.width || 15) * (product.height || 5)) / 5000;
                     totalVolumetricWeight += volWeight * item.quantity;
                 }

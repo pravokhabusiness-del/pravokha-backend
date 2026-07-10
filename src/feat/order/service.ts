@@ -264,7 +264,6 @@ export class OrderService {
 
             for (const [vId, group] of vendorGroups) {
                 const settings = await tx.siteSetting.findUnique({ where: { id: 'primary' } });
-                const taxRate = settings?.taxRate || 18;
 
                 // Calculate subtotal and weighted commission
                 let vendorSubtotal = 0;
@@ -296,6 +295,7 @@ export class OrderService {
                 }
 
                 const adjustedSubtotal = vendorSubtotal - orderDiscount;
+                const taxRate = adjustedSubtotal < 2500 ? 5 : 18;
 
                 // 4. ENTERPRISE SHIPPING CALCULATION
                 // We calculate shipping for THIS vendor's items in the multi-vendor split

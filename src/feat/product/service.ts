@@ -37,6 +37,7 @@ export class ProductService {
             tags: data.tags,
             commissionRate: data.commissionRate !== undefined ? Number(data.commissionRate) : undefined,
             adminNotes: data.adminNotes,
+            weight: data.weight !== undefined ? (data.weight !== null ? Number(data.weight) : null) : undefined,
         };
 
         // Handle Price logic

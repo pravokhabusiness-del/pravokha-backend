@@ -7,6 +7,7 @@ export const createProductSchema = z.object({
     price: z.number().positive('Price must be greater than 0'),
     discountPrice: z.number().optional().nullable(),
     discount_price: z.number().optional().nullable(), // Support snake_case from frontend
+    weight: z.number({ required_error: 'Weight is required' }).positive('Weight must be greater than 0'),
     stock: z.number().int().nonnegative('Stock cannot be negative').optional().default(0),
     categoryId: z.string().uuid('Invalid category ID').optional().nullable(),
     subcategoryId: z.string().uuid('Invalid subcategory ID').optional().nullable(),

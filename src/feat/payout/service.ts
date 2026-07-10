@@ -136,6 +136,7 @@ export class PayoutService {
             amount: order.totalAmount,
             commission: order.platformFee,
             net_amount: order.vendorEarnings,
+            tax: order.taxAmount,
             date: order.createdAt,
             status: 'completed'
         }));

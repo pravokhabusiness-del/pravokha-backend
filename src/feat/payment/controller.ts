@@ -146,7 +146,7 @@ export class PaymentController {
                 orders: orders.map((o: any) => ({ id: o.id, orderNumber: o.orderNumber })),
                 totalAmount: grandTotal,
                 shipping: applicableShipping,
-                tax: grandTotal * (taxRate / (100 + taxRate))
+                tax: orders.reduce((sum: number, o: any) => sum + (o.taxAmount || 0), 0)
             }
         });
     });
