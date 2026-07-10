@@ -7,6 +7,7 @@ export const createOrderSchema = z.object({
     shippingAddress: z.string().min(5),
     shippingCity: z.string().min(2),
     shippingPincode: z.string().length(6),
+    shippingState: z.string().optional(),
     items: z.array(z.object({
         productId: z.string().uuid(),
         quantity: z.number().int().positive(),

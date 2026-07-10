@@ -89,6 +89,7 @@ export class PaymentController {
                 sellerId: i.sellerId
             })),
             pincode,
+            shippingAddress.state,
             false, // Online payment intent
             false
         );
@@ -107,6 +108,7 @@ export class PaymentController {
             shippingAddress: shippingAddress.address,
             shippingCity: shippingAddress.city,
             shippingPincode: shippingAddress.pincode,
+            shippingState: shippingAddress.state,
             items: items.map((i: any) => ({
                 productId: i.productId,
                 quantity: i.quantity,

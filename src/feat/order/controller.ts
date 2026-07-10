@@ -166,12 +166,12 @@ export class OrderController {
 
     static async calculateShipping(req: Request, res: Response, next: NextFunction) {
         try {
-            const { items, pincode, isCod, isExpress } = req.body;
+            const { items, pincode, state, isCod, isExpress } = req.body;
             if (!items || !pincode) {
                 return res.status(400).json({ success: false, message: 'Items and pincode are required' });
             }
 
-            const result = await ShippingService.calculateShipping(items, pincode, isCod, isExpress);
+            const result = await ShippingService.calculateShipping(items, pincode, state, isCod, isExpress);
 
             res.status(200).json({
                 success: true,

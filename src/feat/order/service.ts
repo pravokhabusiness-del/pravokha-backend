@@ -4,6 +4,7 @@ import { ProductService } from '../product/service';
 import { RazorpayService } from '../payment/razorpay.service';
 import { marketplaceEmitter, MARKETPLACE_EVENTS } from '../../shared/util/events';
 import { ShippingService } from '../../services/ShippingService';
+import { gstService } from '../tax/gst.service';
 
 export class OrderService {
     static async createOrder(data: {
@@ -14,6 +15,7 @@ export class OrderService {
         shippingAddress: string;
         shippingCity: string;
         shippingPincode: string;
+        shippingState?: string;
         items: {
             productId: string;
             quantity: number;
@@ -34,6 +36,7 @@ export class OrderService {
         const shippingAddressJson = {
             address: data.shippingAddress,
             city: data.shippingCity,
+            state: data.shippingState || "",
             pincode: data.shippingPincode
         };
 
@@ -295,7 +298,6 @@ export class OrderService {
                 }
 
                 const adjustedSubtotal = vendorSubtotal - orderDiscount;
-                const taxRate = adjustedSubtotal < 2500 ? 5 : 18;
 
                 // 4. ENTERPRISE SHIPPING CALCULATION
                 // We calculate shipping for THIS vendor's items in the multi-vendor split
@@ -306,6 +308,7 @@ export class OrderService {
                         sellerId: vId
                     })),
                     data.shippingPincode,
+                    data.shippingState,
                     data.paymentMethod === 'COD',
                     false, // Standard by default, can be extended to support express toggle from FE
                     tx
@@ -321,8 +324,20 @@ export class OrderService {
                 const platformShippingRevenue = 0;
                 const estimatedCourierCost = applicableShipping * 0.8; // Simulation
 
-                const vendorTax = Math.round((adjustedSubtotal + applicableShipping) * (taxRate / 100));
-                const vendorTotal = adjustedSubtotal + vendorTax + applicableShipping;
+                // GST Calculation (5% Inclusive)
+                const buyerState = data.shippingState || "";
+                const sellerState = group[0]?.product?.vendor?.warehouseState || "";
+
+                const gstResult = gstService.calculateGST({
+                    amount: adjustedSubtotal,
+                    gstRate: 5,
+                    sellerState,
+                    buyerState,
+                    taxInclusive: true
+                });
+
+                const vendorTax = gstResult.totalGst;
+                const vendorTotal = adjustedSubtotal + applicableShipping;
 
                 // If platform fee should also apply to shipping/tax (depends on policy)
                 // In many marketplaces, commission is only on product price.
@@ -341,6 +356,10 @@ export class OrderService {
                         vendorEarnings,
                         shippingFee: applicableShipping,
                         taxAmount: vendorTax,
+                        cgst: gstResult.cgst,
+                        sgst: gstResult.sgst,
+                        igst: gstResult.igst,
+                        gstAmount: gstResult.totalGst,
                         status: (data.status as OrderStatus) || OrderStatus.PENDING,
                         paymentStatus: (data.paymentStatus as PaymentStatus) || PaymentStatus.UNPAID,
                         paymentMethod: data.paymentMethod || 'COD',

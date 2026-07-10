@@ -1,6 +1,7 @@
 // @ts-ignore - Prisma client is generated but IDE cache may be lagging
 import { PrismaClient, ShippingZone } from '@prisma/client';
 import { prisma as defaultPrisma } from '../infra/database/client';
+import { SHIPPING_STATE_TIERS, DEFAULT_SHIPPING_FEE, getStateFromPincode } from '../config/shippingRules';
 
 export interface ShippingCalculationResult {
     totalShippingFee: number;
@@ -31,40 +32,32 @@ export class ShippingService {
     static async calculateShipping(
         items: { productId: string; quantity: number; sellerId: string }[],
         destinationPincode: string,
+        state?: string | boolean, // Support both string and legacy boolean if passed incorrectly
         isCod: boolean = false,
         isExpress: boolean = false,
         tx?: any // Optional transaction client
     ): Promise<ShippingCalculationResult> {
         const db = tx || defaultPrisma;
 
-        // 1. Get destination zone mapping
-        const destMapping = await db.pincodeZoneMapping.findUnique({
-            where: { pincode: destinationPincode }
-        });
+        // Resolve buyer state
+        let resolvedState: string | null = null;
+        let actualIsCod = isCod;
+        let actualIsExpress = isExpress;
 
-        let zoneId = destMapping?.zoneId;
-        const isRemote = destMapping?.isRemote || false;
-
-        if (!destMapping) {
-            // Fallback to the first available standard shipping zone to ensure any valid Indian pincode is serviceable
-            const defaultZone = await db.shippingZone.findFirst({
-                orderBy: { baseSlabPrice: 'asc' }
-            });
-            if (!defaultZone) {
-                throw new Error(`Shipping not available for pincode: ${destinationPincode}`);
-            }
-            zoneId = defaultZone.id;
+        // Handle case where callers pass arguments in legacy order: (items, pincode, isCod, isExpress)
+        if (typeof state === 'boolean') {
+            actualIsCod = state;
+            actualIsExpress = !!isCod; // the 4th parameter
+            resolvedState = getStateFromPincode(destinationPincode);
+        } else if (typeof state === 'string' && state) {
+            resolvedState = state.trim().toUpperCase();
+        } else {
+            resolvedState = getStateFromPincode(destinationPincode);
         }
 
-        const zone = await db.shippingZone.findUnique({
-            where: { id: zoneId }
-        });
+        const tierPrice = resolvedState ? (SHIPPING_STATE_TIERS[resolvedState] ?? DEFAULT_SHIPPING_FEE) : DEFAULT_SHIPPING_FEE;
 
-        if (!zone) {
-            throw new Error(`Shipping zone configuration not found for pincode: ${destinationPincode}`);
-        }
-
-        // 2. Fetch all products to get weights and dimensions
+        // Fetch all products to get weights, dimensions and vendor warehouse address details
         const productIds = items.map(i => i.productId);
         const products = await db.product.findMany({
             where: { id: { in: productIds } },
@@ -76,12 +69,17 @@ export class ShippingService {
                 height: true,
                 vendorId: true,
                 vendor: {
-                    select: { storeName: true }
+                    select: {
+                        storeName: true,
+                        warehouseCity: true,
+                        warehouseState: true,
+                        pickupPincode: true
+                    }
                 }
             }
         });
 
-        // 3. Group items by Vendor
+        // Group items by Vendor
         const vendorItems: Record<string, typeof items> = {};
         items.forEach(item => {
             if (!vendorItems[item.sellerId]) vendorItems[item.sellerId] = [];
@@ -91,7 +89,7 @@ export class ShippingService {
         const breakdown: ShippingCalculationResult['breakdown'] = [];
         let totalShippingFee = 0;
 
-        // 4. Calculate per Vendor
+        // Calculate per Vendor dynamically based on relative distance zones
         for (const [vendorId, itemsList] of Object.entries(vendorItems)) {
             let totalActualWeight = 0;
             let totalVolumetricWeight = 0;
@@ -107,84 +105,59 @@ export class ShippingService {
 
             const chargeableWeight = Math.max(totalActualWeight, totalVolumetricWeight);
 
-            // Slab Calculation: Round up to nearest 500g (0.5kg)
-            // First 500g is Base Price, every additional 500g is Additional Price
-            const weightInSlabs = Math.ceil(chargeableWeight / 0.5);
-            const baseFee = zone.baseSlabPrice;
-            const additionalSlabs = Math.max(0, weightInSlabs - 1);
-            const slabFee = additionalSlabs * zone.additionalSlabPrice;
-
-            let codFee = isCod ? zone.codFee : 0;
-            let remoteSurcharge = isRemote ? zone.remoteSurcharge : 0;
-
-            let baseShippingTotal = baseFee + slabFee + codFee + remoteSurcharge;
-
-            // Apply Express Multiplier
-            let expressFee = 0;
-            if (isExpress) {
-                expressFee = baseShippingTotal * (zone.expressMultiplier - 1);
-                baseShippingTotal *= zone.expressMultiplier;
-            }
-
-            // Additional Fees (Handling, Fuel, Surcharges)
-            const handlingFee = 15; // Flat handling fee of ₹15
-            const fuelSurcharge = Math.round(baseShippingTotal * 0.10); // 10% Fuel Surcharge
-            const subtotalBeforeTax = baseShippingTotal + handlingFee + fuelSurcharge;
-            
-            // Tax: 18% GST on shipping (estimated for display)
-            const shippingTax = Math.round(subtotalBeforeTax * 0.18);
-            
-            const vendorTotal = subtotalBeforeTax; // Stored exclusive of GST so it gets taxed composite with products in checkout/order creation
-
-            // Estimate Delivery Days
-            let minDays = zone.minDays;
-            let maxDays = zone.maxDays;
-            if (isRemote) {
-                minDays += 2; // Remote areas take longer
-                maxDays += 3;
-            }
-            if (isExpress) {
-                minDays = Math.max(1, minDays - 2);
-                maxDays = Math.max(2, maxDays - 3);
-            }
-
-            const firstProduct = products.find((p: { id: string; weight: number | null; length: number | null; width: number | null; height: number | null; vendorId: string; vendor: { storeName: string | null; } | null; }) => p.vendorId === vendorId);
+            const firstProduct = products.find((p: any) => p.vendorId === vendorId);
             const vendorName = firstProduct?.vendor?.storeName || "Vendor";
+
+            const sellerState = firstProduct?.vendor?.warehouseState ? firstProduct.vendor.warehouseState.trim().toUpperCase() : "TAMIL NADU";
+            const sellerPincode = firstProduct?.vendor?.pickupPincode ? firstProduct.vendor.pickupPincode.trim() : "";
+
+            const buyerState = resolvedState ? resolvedState.trim().toUpperCase() : "";
+
+            let zoneName = "Rest of India";
+            let vendorTotal = 100; // Default: Rest of India (₹100)
+
+            const nearbySouthStates = ['KARNATAKA', 'KERALA', 'ANDHRA PRADESH', 'TELANGANA', 'PUDUCHERRY', 'LAKSHADWEEP'];
+
+            // Proximity matching
+            if (destinationPincode && sellerPincode && 
+                (destinationPincode === sellerPincode || destinationPincode.substring(0, 3) === sellerPincode.substring(0, 3))) {
+                zoneName = "Local (Same District)";
+                vendorTotal = 40;
+            } else if (buyerState === sellerState) {
+                zoneName = `Intra-State (${sellerState})`;
+                vendorTotal = 60;
+            } else if (nearbySouthStates.includes(buyerState)) {
+                zoneName = "Nearby South States";
+                vendorTotal = 80;
+            } else {
+                zoneName = "Rest of India";
+                vendorTotal = 100;
+            }
 
             breakdown.push({
                 vendorId,
                 vendorName,
                 chargeableWeight: Number(chargeableWeight.toFixed(2)),
-                baseFee,
-                slabFee,
-                codFee,
-                remoteSurcharge,
-                expressFee: Number(expressFee.toFixed(2)),
-                handlingFee,
-                fuelSurcharge,
-                tax: shippingTax,
+                baseFee: vendorTotal,
+                slabFee: 0,
+                codFee: 0,
+                remoteSurcharge: 0,
+                expressFee: 0,
+                handlingFee: 0,
+                fuelSurcharge: 0,
+                tax: 0,
                 total: Number(vendorTotal.toFixed(2)),
-                minDays,
-                maxDays,
-                zone: zone.zoneName
+                minDays: 3,
+                maxDays: 7,
+                zone: zoneName
             });
 
             totalShippingFee += vendorTotal;
         }
 
-        // 5. Check Free Shipping Threshold (Site-wide or Global)
-        const settings = await db.siteSetting.findUnique({ where: { id: "primary" } });
-        const subtotal = items.reduce((sum, item) => {
-            // Price should be passed or fetched. For calculation logic we focus on fee.
-            return sum;
-        }, 0);
-
-        // Note: The caller (Controller) should handle the free shipping threshold logic 
-        // against the order subtotal. We return the calculated fee.
-
         return {
             totalShippingFee: Number(totalShippingFee.toFixed(2)),
-            isFreeShipping: false, // Default, handled by caller
+            isFreeShipping: false,
             breakdown
         };
     }
