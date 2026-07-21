@@ -29,7 +29,7 @@ export class PayoutService {
                         beneficiaryName: true,
                         status: true,
                         owner: {
-                            select: { email: true, name: true, verificationStatus: true }
+                            select: { email: true, name: true, verificationStatus: true, avatarUrl: true }
                         }
                     }
                 }

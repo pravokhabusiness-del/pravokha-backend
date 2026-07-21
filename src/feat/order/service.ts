@@ -447,6 +447,11 @@ export class OrderService {
             where: { id },
             include: {
                 vendor: true,
+                customer: {
+                    select: {
+                        avatarUrl: true
+                    }
+                },
                 items: {
                     include: {
                         product: {
@@ -553,7 +558,12 @@ export class OrderService {
                                 }
                             }
                         },
-                        vendor: true
+                        vendor: true,
+                        customer: {
+                            select: {
+                                avatarUrl: true
+                            }
+                        }
                     }
                 }),
                 prisma.order.count({ where })
