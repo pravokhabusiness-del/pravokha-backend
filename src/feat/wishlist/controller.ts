@@ -11,6 +11,7 @@ export class WishlistController {
             include: {
                 product: {
                     include: {
+                        images: true,
                         variants: {
                             include: {
                                 sizes: true

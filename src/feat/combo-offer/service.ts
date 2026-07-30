@@ -44,7 +44,7 @@ export class ComboOfferService {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Enrich each offer with product details (title, slug, first image)
+        // Enrich each offer with product details
         const enrichedOffers = await Promise.all(offers.map(async (offer) => {
             let products: any[] = [];
             if (offer.productIds) {
@@ -60,13 +60,29 @@ export class ComboOfferService {
                                 id: true,
                                 title: true,
                                 slug: true,
+                                price: true,
+                                compareAtPrice: true,
                                 stock: true,
                                 status: true,
                                 isBlocked: true,
                                 deletedAt: true,
+                                vendorId: true,
                                 variants: {
                                     take: 1,
-                                    select: { images: true }
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        colorName: true,
+                                        colorHex: true,
+                                        images: true,
+                                        sizes: {
+                                            select: {
+                                                id: true,
+                                                size: true,
+                                                stock: true
+                                            }
+                                        }
+                                    }
                                 },
                                 images: {
                                     take: 1,
@@ -99,7 +115,17 @@ export class ComboOfferService {
                             if (!imageUrl && p.images?.[0]?.url) {
                                 imageUrl = p.images[0].url;
                             }
-                            return { id: p.id, title: p.title, slug: p.slug, imageUrl, stock: p.stock };
+                            return {
+                                id: p.id,
+                                title: p.title,
+                                slug: p.slug,
+                                price: p.price,
+                                compareAtPrice: p.compareAtPrice,
+                                imageUrl,
+                                stock: p.stock,
+                                vendorId: p.vendorId,
+                                variants: p.variants
+                            };
                         }).filter(Boolean);
                     }
                 } catch (e) {
