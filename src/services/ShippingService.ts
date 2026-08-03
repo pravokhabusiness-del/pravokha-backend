@@ -89,7 +89,7 @@ export class ShippingService {
         const breakdown: ShippingCalculationResult['breakdown'] = [];
         let totalShippingFee = 0;
 
-        // Calculate per Vendor dynamically based on relative distance zones
+        // Calculate per Vendor dynamically based on weight tiers (250g/500g, Base ₹99, 50g buffer)
         for (const [vendorId, itemsList] of Object.entries(vendorItems)) {
             let totalActualWeight = 0;
             let totalVolumetricWeight = 0;
@@ -97,9 +97,13 @@ export class ShippingService {
             itemsList.forEach((item: { productId: string; quantity: number; sellerId: string }) => {
                 const product = products.find((p: any) => p.id === item.productId);
                 if (product) {
-                    totalActualWeight += ((product.weight || 0.5) + 0.05) * item.quantity;
+                    // Base product weight (default 200g / 0.2kg) plus 50g (0.05kg) buffer per item
+                    const itemWeight = (product.weight || 0.20) + 0.05;
+                    totalActualWeight += itemWeight * item.quantity;
                     const volWeight = ((product.length || 20) * (product.width || 15) * (product.height || 5)) / 5000;
                     totalVolumetricWeight += volWeight * item.quantity;
+                } else {
+                    totalActualWeight += 0.25 * item.quantity; // Default 250g
                 }
             });
 
@@ -113,33 +117,39 @@ export class ShippingService {
 
             const buyerState = resolvedState ? resolvedState.trim().toUpperCase() : "";
 
-            let zoneName = "Rest of India";
-            let vendorTotal = 100; // Default: Rest of India (₹100)
+            // Weight-based shipping tiers:
+            // Base Charge: ₹99 for up to 250g (0.25 kg)
+            // Tier 2 (up to 500g / 0.50 kg): +₹50 slab fee
+            // Tier 3 (> 500g): +₹49 for each additional 250g slab
+            const baseFee = DEFAULT_SHIPPING_FEE; // ₹99
+            let slabFee = 0;
 
-            const nearbySouthStates = ['KARNATAKA', 'KERALA', 'ANDHRA PRADESH', 'TELANGANA', 'PUDUCHERRY', 'LAKSHADWEEP'];
+            if (chargeableWeight > 0.25 && chargeableWeight <= 0.50) {
+                slabFee = 50; // 500g tier
+            } else if (chargeableWeight > 0.50) {
+                const extraWeight = chargeableWeight - 0.50;
+                const extraSlabs = Math.ceil(extraWeight / 0.25);
+                slabFee = 50 + (extraSlabs * 49);
+            }
 
-            // Proximity matching
+            const vendorTotal = baseFee + slabFee;
+
+            let zoneName = "Standard Weight-Based Delivery";
             if (destinationPincode && sellerPincode && 
                 (destinationPincode === sellerPincode || destinationPincode.substring(0, 3) === sellerPincode.substring(0, 3))) {
                 zoneName = "Local (Same District)";
-                vendorTotal = 40;
             } else if (buyerState === sellerState) {
                 zoneName = `Intra-State (${sellerState})`;
-                vendorTotal = 60;
-            } else if (nearbySouthStates.includes(buyerState)) {
-                zoneName = "Nearby South States";
-                vendorTotal = 80;
             } else {
-                zoneName = "Rest of India";
-                vendorTotal = 100;
+                zoneName = "Inter-State Delivery";
             }
 
             breakdown.push({
                 vendorId,
                 vendorName,
                 chargeableWeight: Number(chargeableWeight.toFixed(2)),
-                baseFee: vendorTotal,
-                slabFee: 0,
+                baseFee,
+                slabFee,
                 codFee: 0,
                 remoteSurcharge: 0,
                 expressFee: 0,

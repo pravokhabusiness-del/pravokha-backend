@@ -42,7 +42,7 @@ export const SHIPPING_STATE_TIERS: Record<string, number> = {
     'ANDAMAN AND NICOBAR ISLANDS': 80
 };
 
-export const DEFAULT_SHIPPING_FEE = 80;
+export const DEFAULT_SHIPPING_FEE = 99;
 
 /**
  * Fallback to map Indian pincode prefix to normalized state name.
