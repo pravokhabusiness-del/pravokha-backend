@@ -151,8 +151,9 @@ export class RazorpayService {
     /**
      * Handles COD order by creating a PENDING PaymentTransaction
      */
-    static async handleCODPayment(orderId: string, amount: number) {
-        return await prisma.paymentTransaction.create({
+    static async handleCODPayment(orderId: string, amount: number, tx?: any) {
+        const client = tx || prisma;
+        return await client.paymentTransaction.create({
             data: {
                 orderId: orderId,
                 amount: amount,

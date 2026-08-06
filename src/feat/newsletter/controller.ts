@@ -1,17 +1,26 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { prisma } from '../../infra/database/client';
 import { asyncHandler } from '../../utils/asyncHandler';
 
-export const subscribeToNewsletter = asyncHandler(async (req: Request, res: Response) => {
-    const { email } = req.body;
+const newsletterSchema = z.object({
+    email: z.string({ required_error: 'Email is required' }).email('Please provide a valid email address')
+});
 
-    if (!email) {
-        return res.status(400).json({ success: false, message: 'Email is required' });
+export const subscribeToNewsletter = asyncHandler(async (req: Request, res: Response) => {
+    const parseResult = newsletterSchema.safeParse(req.body);
+    if (!parseResult.success) {
+        return res.status(400).json({
+            success: false,
+            message: parseResult.error.errors[0]?.message || 'Invalid email address format'
+        });
     }
+
+    const email = parseResult.data.email.toLowerCase().trim();
 
     try {
         await prisma.newsletterSubscription.create({
-            data: { email: email.toLowerCase().trim() }
+            data: { email }
         });
 
         // Notify Admins

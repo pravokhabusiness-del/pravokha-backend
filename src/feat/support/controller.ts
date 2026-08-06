@@ -3,6 +3,16 @@ import { prisma } from '../../infra/database/client';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { Role } from '../../shared/domain/types';
 import { isCustomer } from '../../shared/utils/role.utils';
+import { z } from 'zod';
+
+const contactUsSchema = z.object({
+    name: z.string({ required_error: 'Name is required' }).trim().min(2, 'Name must be at least 2 characters'),
+    email: z.string({ required_error: 'Email is required' }).trim().email('Invalid email address format'),
+    subject: z.string({ required_error: 'Subject is required' }).trim().min(3, 'Subject must be at least 3 characters'),
+    message: z.string({ required_error: 'Message is required' }).trim().min(10, 'Message must be at least 10 characters'),
+    website: z.string().optional(),
+    honeypot: z.string().optional()
+});
 
 export class SupportController {
     static createTicket = asyncHandler(async (req: Request, res: Response) => {
@@ -161,9 +171,23 @@ export class SupportController {
     });
 
     static contactUs = asyncHandler(async (req: Request, res: Response) => {
-        const { name, email, subject, message } = req.body;
-        // Logic for contact form (e.g., storage or email)
-        res.json({ success: true, message: 'Message received' });
+        // Honeypot check: If bot fills out invisible 'website' or 'honeypot' field, return success to mitigate spam
+        if (req.body.website || req.body.honeypot) {
+            return res.status(200).json({ success: true, message: 'Message received' });
+        }
+
+        const parseResult = contactUsSchema.safeParse(req.body);
+        if (!parseResult.success) {
+            return res.status(400).json({
+                success: false,
+                message: parseResult.error.errors[0]?.message || 'Invalid support contact form data'
+            });
+        }
+
+        const { name, email, subject, message } = parseResult.data;
+
+        // Process message / send notification if needed
+        res.json({ success: true, message: 'Thank you for contacting us. Your message has been received.' });
     });
 
     // Chat Conversation Methods

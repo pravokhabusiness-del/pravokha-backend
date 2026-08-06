@@ -408,9 +408,13 @@ export class ProductService {
             },
             vendor: {
                 select: {
+                    id: true,
                     storeName: true,
                     slug: true,
-                    supportEmail: true
+                    logoUrl: true,
+                    bannerUrl: true,
+                    rating: true,
+                    reviewCount: true
                 }
             },
             category: true,
@@ -474,13 +478,15 @@ export class ProductService {
                 }
             },
             vendor: {
-                include: {
-                    owner: {
-                        select: {
-                            name: true,
-                            email: true,
-                        }
-                    }
+                select: {
+                    id: true,
+                    storeName: true,
+                    slug: true,
+                    logoUrl: true,
+                    bannerUrl: true,
+                    description: true,
+                    rating: true,
+                    reviewCount: true
                 }
             },
             category: true,

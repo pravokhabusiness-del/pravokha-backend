@@ -157,30 +157,42 @@ export class PaymentController {
         const { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
 
         if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-            return res.status(400).json({ success: false, message: 'Missing payment details' });
+            return res.status(400).json({ success: false, message: 'Missing required payment verification details' });
         }
 
         const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
 
         if (!isValid) {
-            await prisma.paymentTransaction.update({
-                where: { razorpayOrderId: razorpayOrderId },
-                data: {
-                    status: TransactionStatus.FAILED,
-                    failureReason: 'Signature verification failed'
-                }
-            });
-            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+            try {
+                await prisma.paymentTransaction.update({
+                    where: { razorpayOrderId: razorpayOrderId },
+                    data: {
+                        status: TransactionStatus.FAILED,
+                        failureReason: 'Signature verification failed'
+                    }
+                });
+            } catch (e) {
+                console.warn('[PaymentController] Could not record failed transaction status:', e);
+            }
+            return res.status(400).json({ success: false, message: 'Invalid payment signature verification' });
         }
 
-        const result = await RazorpayService.handlePaymentSuccess(
-            orderId,
-            razorpayOrderId,
-            razorpayPaymentId,
-            razorpaySignature
-        );
+        try {
+            const result = await RazorpayService.handlePaymentSuccess(
+                orderId,
+                razorpayOrderId,
+                razorpayPaymentId,
+                razorpaySignature
+            );
 
-        res.json({ success: true, data: result });
+            return res.json({ success: true, data: result });
+        } catch (error: any) {
+            console.error('[PaymentController] Error completing payment verification:', error.message);
+            return res.status(400).json({
+                success: false,
+                message: error.message || 'Payment verification failed'
+            });
+        }
     });
 
     static refundOrder = asyncHandler(async (req: Request, res: Response) => {

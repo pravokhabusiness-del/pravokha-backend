@@ -118,10 +118,10 @@ export class ShippingService {
             const buyerState = resolvedState ? resolvedState.trim().toUpperCase() : "";
 
             // Weight-based shipping tiers:
-            // Base Charge: ₹99 for up to 250g (0.25 kg)
+            // Base Charge: derived from state tier price (e.g., ₹60 for Tier 2, ₹40 for Tier 1, ₹80 for Tier 3)
             // Tier 2 (up to 500g / 0.50 kg): +₹50 slab fee
             // Tier 3 (> 500g): +₹49 for each additional 250g slab
-            const baseFee = DEFAULT_SHIPPING_FEE; // ₹99
+            const baseFee = tierPrice;
             let slabFee = 0;
 
             if (chargeableWeight > 0.25 && chargeableWeight <= 0.50) {

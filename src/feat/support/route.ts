@@ -1,12 +1,21 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { SupportController } from './controller';
 import { authenticate, authorize } from '../../shared/middleware/auth';
 import { Role } from '../../shared/domain/types';
 
+const contactLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 5, // Max 5 submissions per 15 minutes
+    message: { success: false, message: 'Too many contact form submissions. Please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 const router = Router();
 
 // Public routes
-router.post('/contact', SupportController.contactUs);
+router.post('/contact', contactLimiter, SupportController.contactUs);
 
 // User routes
 router.post('/tickets', authenticate, SupportController.createTicket);

@@ -407,7 +407,7 @@ export class OrderService {
 
                 // Track COD transaction for audit/analytics
                 if (data.paymentMethod === 'COD') {
-                    await RazorpayService.handleCODPayment(order.id, vendorTotal);
+                    await RazorpayService.handleCODPayment(order.id, vendorTotal, tx);
                 }
 
                 createdOrders.push(order);
@@ -446,7 +446,17 @@ export class OrderService {
         const order = await prisma.order.findUnique({
             where: { id },
             include: {
-                vendor: true,
+                vendor: {
+                    select: {
+                        id: true,
+                        storeName: true,
+                        slug: true,
+                        logoUrl: true,
+                        bannerUrl: true,
+                        rating: true,
+                        reviewCount: true
+                    }
+                },
                 customer: {
                     select: {
                         avatarUrl: true
@@ -558,7 +568,17 @@ export class OrderService {
                                 }
                             }
                         },
-                        vendor: true,
+                        vendor: {
+                            select: {
+                                id: true,
+                                storeName: true,
+                                slug: true,
+                                logoUrl: true,
+                                bannerUrl: true,
+                                rating: true,
+                                reviewCount: true
+                            }
+                        },
                         customer: {
                             select: {
                                 avatarUrl: true
