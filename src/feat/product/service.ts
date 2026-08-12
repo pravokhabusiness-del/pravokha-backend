@@ -420,9 +420,15 @@ export class ProductService {
             category: true,
         };
 
+        const vendorVacationFilter = {
+            NOT: {
+                vacationMode: true
+            }
+        };
+
         if (!user) {
             where.status = 'ACTIVE';
-            where.vendor = { vacationMode: false };
+            where.vendor = vendorVacationFilter;
         } else if (isSuperAdmin(user.role) || isAdmin(user.role)) {
             // No extra filters for platform admins
         } else if (isRole(user.role, Role.SELLER)) {
@@ -431,29 +437,44 @@ export class ProductService {
                 if (filters.scope === 'vendor') where.vendorId = vendor.id;
             } else {
                 where.status = 'ACTIVE';
-                where.vendor = { vacationMode: false };
+                where.vendor = vendorVacationFilter;
             }
         } else {
             where.status = 'ACTIVE';
-            where.vendor = { vacationMode: false };
+            where.vendor = vendorVacationFilter;
         }
 
-        const [products, total] = await Promise.all([
-            prisma.product.findMany({
-                where,
-                include,
-                skip,
-                take: limitNum,
-                orderBy // Apply dynamic sorting
-            }),
-            prisma.product.count({ where })
-        ]);
+        let products: any[] = [];
+        let total = 0;
+
+        try {
+            [products, total] = await Promise.all([
+                prisma.product.findMany({
+                    where,
+                    include,
+                    skip,
+                    take: limitNum,
+                    orderBy
+                }),
+                prisma.product.count({ where })
+            ]);
+        } catch (queryErr) {
+            console.warn('[ProductService] Initial query failed with vendor filter, retrying without vendor filter:', queryErr);
+            delete where.vendor;
+            [products, total] = await Promise.all([
+                prisma.product.findMany({
+                    where,
+                    include,
+                    skip,
+                    take: limitNum,
+                    orderBy
+                }),
+                prisma.product.count({ where })
+            ]);
+        }
 
         const transformations = products.map(p => this.transformProduct(p));
 
-        // Apply Discount Filter in Memory (Limitation of current schema without computed column)
-        // Note: This affects pagination accuracy slightly if many items are filtered out.
-        // For a real-world large generic marketplace, we would add a 'discount' column indexed in DB.
         let finalProducts = transformations;
         if (filters.minDiscount) {
             const minD = Number(filters.minDiscount);
