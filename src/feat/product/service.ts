@@ -422,6 +422,7 @@ export class ProductService {
 
         if (!user) {
             where.status = 'ACTIVE';
+            where.vendor = { vacationMode: false };
         } else if (isSuperAdmin(user.role) || isAdmin(user.role)) {
             // No extra filters for platform admins
         } else if (isRole(user.role, Role.SELLER)) {
@@ -430,9 +431,11 @@ export class ProductService {
                 if (filters.scope === 'vendor') where.vendorId = vendor.id;
             } else {
                 where.status = 'ACTIVE';
+                where.vendor = { vacationMode: false };
             }
         } else {
             where.status = 'ACTIVE';
+            where.vendor = { vacationMode: false };
         }
 
         const [products, total] = await Promise.all([
