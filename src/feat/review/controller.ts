@@ -115,8 +115,11 @@ export class ReviewController {
         const { id } = req.params;
         const { rating, title, comment, images, metadata } = req.body;
 
+        const isSuper = user.role === Role.SUPER_ADMIN || user.role === Role.ADMIN || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+        const whereClause = isSuper ? { id } : { id, userId: user.id };
+
         const review = await prisma.productReview.update({
-            where: { id, userId: user.id },
+            where: whereClause,
             data: {
                 rating: rating !== undefined ? parseFloat(String(rating)) : undefined,
                 title,
@@ -125,6 +128,28 @@ export class ReviewController {
                 metadata: typeof metadata === 'object' ? JSON.stringify(metadata) : (metadata || undefined)
             }
         });
+
+        // Recalculate product rating and review count
+        if (review.productId) {
+            try {
+                const productReviews = await prisma.productReview.findMany({
+                    where: { productId: review.productId, status: 'published', isDeleted: false },
+                    select: { rating: true }
+                });
+                const totalReviews = productReviews.length;
+                const avgRating = totalReviews > 0 ? productReviews.reduce((acc, curr) => acc + curr.rating, 0) / totalReviews : 0;
+
+                await prisma.product.update({
+                    where: { id: review.productId },
+                    data: {
+                        rating: parseFloat(avgRating.toFixed(1)),
+                        reviewCount: totalReviews
+                    }
+                });
+            } catch (e) {
+                console.warn('[ReviewController] Rating recalculation warning:', e);
+            }
+        }
 
         res.json({
             success: true,
@@ -139,7 +164,7 @@ export class ReviewController {
     static deleteReview = asyncHandler(async (req: Request, res: Response) => {
         const user = (req as any).user;
         const { id } = req.params;
-        const isSuper = isSuperAdmin(user.role);
+        const isSuper = isSuperAdmin(user.role) || user.role === Role.ADMIN || user.role === 'ADMIN';
 
         if (isSuper) {
             await prisma.productReview.update({
@@ -158,7 +183,8 @@ export class ReviewController {
 
     static listAllReviews = asyncHandler(async (req: Request, res: Response) => {
         const user = (req as any).user;
-        if (user.role !== Role.SUPER_ADMIN && user.role !== Role.ADMIN) return res.status(403).json({ message: 'Unauthorized' });
+        const isAuthAdmin = [Role.SUPER_ADMIN, Role.ADMIN, 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
+        if (!isAuthAdmin) return res.status(403).json({ message: 'Unauthorized' });
 
         const reviews = await prisma.productReview.findMany({
             where: { isDeleted: false },
@@ -180,7 +206,8 @@ export class ReviewController {
 
     static updateReviewStatus = asyncHandler(async (req: Request, res: Response) => {
         const user = (req as any).user;
-        if (user.role !== Role.SUPER_ADMIN) return res.status(403).json({ message: 'Unauthorized' });
+        const isAuthAdmin = [Role.SUPER_ADMIN, Role.ADMIN, 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
+        if (!isAuthAdmin) return res.status(403).json({ message: 'Unauthorized' });
 
         const { id } = req.params;
         const { status } = req.body;
